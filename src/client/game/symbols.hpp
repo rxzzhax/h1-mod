@@ -335,6 +335,8 @@ namespace game
 
 	WEAK symbol<map_t> maps{0x7CE5A0, 0x926C80};
 
+	WEAK symbol<HWND> hWnd{0x0, 0xC9DD2E0};
+
 	namespace mp
 	{
 		WEAK symbol<gentity_s> g_entities{0x0, 0x71F19E0};
