@@ -56,4 +56,4 @@
 	url = https://github.com/nothings/stb.git
 [submodule "deps/imgui"]
 	path = deps/imgui
-	url = https://github.com/h1-mod/imgui
+	url = https://github.com/h1-mod/imgui.git

@@ -217,21 +217,6 @@ namespace gui
 			return result;
 		}
 
-		void dxgi_swap_chain_present_stub(utils::hook::assembler& a)
-		{
-			a.pushad64();
-			a.call_aligned(gui_on_frame);
-			a.popad64();
-
-			a.mov(r8d, esi);
-			a.mov(edx, r15d);
-			a.mov(rcx, rdi);
-			a.call(rbx);
-			a.mov(ecx, eax);
-
-			a.jmp(0x6CB185_b);
-		}
-
 		utils::hook::detour wnd_proc_hook;
 		LRESULT wnd_proc_stub(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		{
