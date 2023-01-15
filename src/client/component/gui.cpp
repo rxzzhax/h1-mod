@@ -162,25 +162,6 @@ namespace gui
 			});
 		}
 
-		void draw_main_menu_bar()
-		{
-			if (ImGui::BeginMainMenuBar())
-			{
-				if (ImGui::BeginMenu("Windows"))
-				{
-					menu_checkbox("Asset list", "asset_list");
-					menu_checkbox("Entity list", "entity_list");
-					menu_checkbox("Console", "console");
-					menu_checkbox("Script console", "script_console");
-					menu_checkbox("Debug", "debug");
-
-					ImGui::EndMenu();
-				}
-
-				ImGui::EndMainMenuBar();
-			}
-		}
-
 		void gui_on_frame()
 		{
 			if (!game::Sys_IsDatabaseReady2())
@@ -234,13 +215,13 @@ namespace gui
 
 	bool gui_key_event(const int local_client_num, const int key, const int down)
 	{
-		if (key == game::K_F10 && down)
+		if (key == game::keyNum_t::K_F2 && down)
 		{
 			toggled = !toggled;
 			return false;
 		}
 
-		if (key == game::K_ESCAPE && down && toggled)
+		if (key == game::keyNum_t::K_ESCAPE && down && toggled)
 		{
 			toggled = false;
 			return false;
@@ -291,39 +272,29 @@ namespace gui
 	public:
 		void* load_import(const std::string& library, const std::string& function) override
 		{
-			if (game::environment::is_sp() || function != "D3D11CreateDevice")
+			if (function == "D3D11CreateDevice")
 			{
-				return nullptr;
+				return d3d11_create_device_stub;
 			}
 
-			return d3d11_create_device_stub;
+			return nullptr;
 		}
 
 		void post_unpack() override
 		{
-			if (game::environment::is_sp())
-			{
-				return;
-			}
+			utils::hook::nop(SELECT_VALUE(0x5B3570_b, 0x6CB16D_b), 9);
+			utils::hook::call(SELECT_VALUE(0x5B3573_b, 0x6CB170_b), gui_on_frame);
+			wnd_proc_hook.create(SELECT_VALUE(0x4631D0_b, 0x5BFF60_b), wnd_proc_stub);
 
-			utils::hook::nop(0x6CB16D_b, 9);
-			utils::hook::call(0x6CB170_b, gui_on_frame);
-			wnd_proc_hook.create(0x5BFF60_b, wnd_proc_stub);
-
-			on_frame([]()
+			on_frame([]
 			{
 				show_notifications();
-				draw_main_menu_bar();
+				ImGui::ShowDemoWindow();
 			});
 		}
 
 		void pre_destroy() override
 		{
-			if (game::environment::is_sp())
-			{
-				return;
-			}
-
 			if (initialized)
 			{
 				ImGui_ImplWin32_Shutdown();

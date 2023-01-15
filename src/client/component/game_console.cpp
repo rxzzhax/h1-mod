@@ -578,16 +578,6 @@ namespace game_console
 
 	bool console_key_event(const int local_client_num, const int key, const int down)
 	{
-		if (key == game::keyNum_t::K_F10)
-		{
-			if (!game::Com_InFrontend())
-			{
-				return false;
-			}
-
-			game::Cmd_ExecuteSingleCommand(local_client_num, 0, "lui_open menu_systemlink_join\n");
-		}
-
 		if (key == game::keyNum_t::K_GRAVE || key == game::keyNum_t::K_TILDE)
 		{
 			if (!down)
