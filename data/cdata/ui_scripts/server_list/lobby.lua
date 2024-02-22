@@ -1,7 +1,8 @@
 local Lobby = luiglobals.Lobby
 local MPLobbyOnline = LUI.mp_menus.MPLobbyOnline
+local MPLobbyPrivate = LUI.mp_menus.MPLobbyPrivate
 
-function LeaveLobby()
+local function LeaveLobby()
     LeaveXboxLive()
     if Lobby.IsInPrivateParty() == false or Lobby.IsPrivatePartyHost() then
         LUI.FlowManager.RequestLeaveMenuByName("menu_xboxlive")
@@ -9,7 +10,7 @@ function LeaveLobby()
     end
 end
 
-function menu_xboxlive(f16_arg0)
+local function menu_xboxlive(f16_arg0)
     local menu = LUI.MPLobbyBase.new(f16_arg0, {
         menu_title = "@PLATFORM_UI_HEADER_PLAY_MP_CAPS",
         memberListState = Lobby.MemberListStates.Prelobby
@@ -29,12 +30,6 @@ function menu_xboxlive(f16_arg0)
 
         menu:AddButton("@MENU_MODS", function(a1)
             LUI.FlowManager.RequestAddMenu(a1, "mods_menu", true, nil)
-        end)
-
-        -- Aurora Hub (TODO: MENU_AURORAHUB)
-        game:addlocalizedstring("@MENU_AURORAHUB", "AURORA HUB")
-        menu:AddButton("@MENU_AURORAHUB", function(menu)
-            LUI.FlowManager.RequestAddMenu(menu, "aurora_hub", true, nil)
         end)
     end
 
@@ -99,4 +94,59 @@ function menu_xboxlive(f16_arg0)
     return menu
 end
 
+local function menu_xboxlive_privatelobby(f12_arg0)
+    local mp_lobby_base = LUI.MPLobbyBase.new(f12_arg0, {
+        menu_title = f12_arg1.menu_title or "@LUA_MENU_PRIVATE_MATCH_LOBBY",
+        has_match_summary = true
+    }, true)
+    mp_lobby_base:setClass(LUI.MPLobbyPrivate)
+    mp_lobby_base:SetBreadCrumb(Engine.ToUpperCase(Engine.Localize("@PLATFORM_PLAY_ONLINE")))
+
+    if Lobby.IsGameHost() then
+        local start_game_btn = mp_lobby_base:AddButton("@LUA_MENU_START_GAME", MPLobbyPrivate.OnStartGame, function()
+            return IsStartGameDisabled(mp_lobby_base)
+        end)
+        start_game_btn:setDisabledRefreshRate(100)
+
+        local game_setup_btn = mp_lobby_base:AddButton("@LUA_MENU_GAME_SETUP", MPLobbyPrivate.OnGameSetup, MPLobbyPrivate.IsGameSetupDisabled)
+        if IsGameSetupDisabled(game_setup_btn) then
+            game_setup_btn:setDisabledRefreshRate(500)
+            LUI.MPLobbyBase.AddLoadingWidgetToButton(game_setup_btn)
+        end
+    end
+
+    if Engine.IsCoreMode() then
+        mp_lobby_base:AddCACButton(true)
+        mp_lobby_base:AddPersonalizationButton()
+        mp_lobby_base:AddDepotButton()
+    end
+
+    mp_lobby_base:AddOptionsButton()
+    mp_lobby_base:AddMapDisplay(LUI.MPLobbyMap.new, false)
+
+    if not Lobby.IsGameHost() then
+        local self = LUI.UITimer.new(200, "ClientUpdateDescription")
+        self.id = "MPLobbyPrivate_desc_timer"
+        mp_lobby_base:addElement(self)
+        mp_lobby_base:registerEventHandler("ClientUpdateDescription", ClientUpdateDescription)
+    end
+
+    mp_lobby_base:registerEventHandler("exit_private_lobby", function(element, event)
+        LUI.FlowManager.RequestLeaveMenu(element)
+    end)
+
+    mp_lobby_base:registerEventHandler("player_joined", Cac.PlayerJoinedEvent)
+    mp_lobby_base:registerEventHandler("loadout_request", Cac.PlayerJoinedEvent)
+
+    if not Engine.GetSplitScreen() then
+        Engine.Exec("forcenosplitscreencontrol mplobbyprivate_new")
+    end
+
+    mp_lobby_base:AddCurrencyInfoPanel()
+    mp_lobby_base.description = mp_lobby_base:AddMenuDescription(4, 1)
+
+    return mp_lobby_base
+end
+
 LUI.MenuBuilder.m_types_build["menu_xboxlive"] = menu_xboxlive
+LUI.MenuBuilder.m_types_build["menu_xboxlive_privatelobby"] = menu_xboxlive_privatelobby

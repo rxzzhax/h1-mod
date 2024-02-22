@@ -1,95 +1,63 @@
-local installed_content = {}
-installed_content.list_files_res = nil
-installed_content.mods_list_files_res = nil
-installed_content.usermaps_list_files_res = nil
+local MPLobbyOnline = LUI.mp_menus.MPLobbyOnline
 
-local function get_installed_content_from_folder(menu, name)
-    if (io.directoryexists(name)) then
-        installed_content.list_files_res = io.listfiles(name .. "/")
-        local mods = installed_content.list_files_res
-        for i = 1, #mods do
-            local mod_name_ = mods[i]
-            if (io.directoryexists(mod_name_) and not io.directoryisempty(mod_name_)) then
-                installed_content[mod_name_] = #installed_content;
-            end
-        end
-    end
-end
+-- TODO
+LUI.MenuBuilder.registerType("headquarters_menu", function(a1)
+    Engine.Exec("ui_mapname mp_creek", 0 )
 
-LUI.MenuBuilder.registerType("aurora_hub", function(menu_)
-    game:addlocalizedstring("@MENU_AURORAHUB", "AURORA HUB") -- TODO
-    local menu = LUI.MenuTemplate.new(menu_, {
-        menu_title = "@MENU_AURORAHUB",
+    local a1_ = LUI.mp_menus.MPLobbyOnline.saved_serverlist_data.a1
+    local a2_ = LUI.mp_menus.MPLobbyOnline.saved_serverlist_data.a2
+
+    --[[
+    local menu = LUI.MenuTemplate.new(a1, {
+        menu_title = "@MENU_HEADQUARTERS",
         exclusiveController = 0,
-        menu_width = GenericMenuDims.OptionMenuWidth,
+        menu_width = 400,
         menu_top_indent = LUI.MenuTemplate.spMenuOffset,
-        showTopRightSmallBar = false,
+        showTopRightSmallBar = true,
         uppercase_title = true
     })
 
-    game:addlocalizedstring("@LUA_MENU_AVAILABLE_CONTENT", "AVAILABLE CONTENT") -- TODO
-    createdivider(menu, Engine.Localize("@LUA_MENU_AVAILABLE_CONTENT"))
+    local modfolder = game:getloadedmod()
+    if (modfolder ~= "") then
+        local name = getmodname(modfolder)
+        createdivider(menu, Engine.Localize("@LUA_MENU_LOADED_MOD", name:truncate(24)))
 
-    get_installed_content_from_folder(menu, "mods")
-    if (installed_content.list_files_res ~= nil) then
-        installed_content.mods_list_files_res = installed_content.list_files_res
-    end
-
-    get_installed_content_from_folder(menu, "usermaps")
-    if (installed_content.list_files_res ~= nil) then
-        installed_content.usermaps_list_files_res = installed_content.list_files_res
-    end
-
-    -- get available content
-    local available_content = aurora_hub.get_available_content_data()
-    for key, value in pairs(available_content) do
-        --print("key: " .. key .. ", value: " .. value)
-
-        menu:AddButton(key, function()
-            if (installed_content[key] ~= nil) then
-                Engine.Exec("loadmod " .. key)
-                return
-            end
-
-            download.manual_start_download(key)
+        menu:AddButton("@LUA_MENU_UNLOAD", function()
+            Engine.Exec("unloadmod")
         end, nil, true, nil, {
-            desc_text = desc
+            desc_text = Engine.Localize("@LUA_MENU_UNLOAD_DESC")
         })
     end
 
-    menu:AddBackButton(function(menu)
+    createdivider(menu, Engine.Localize("@LUA_MENU_AVAILABLE_MODS"))
+
+    if (io.directoryexists("mods")) then
+        local mods = io.listfiles("mods/")
+        for i = 1, #mods do
+            if (io.directoryexists(mods[i]) and not io.directoryisempty(mods[i])) then
+                local name, desc = getmodname(mods[i])
+
+                if (mods[i] ~= modfolder) then
+                    game:addlocalizedstring(name, name)
+                    menu:AddButton(name, function()
+                        Engine.Exec("loadmod " .. mods[i])
+                    end, nil, true, nil, {
+                        desc_text = desc
+                    })
+                end
+            end
+        end
+    end
+
+    menu:AddBackButton(function(a1)
         Engine.PlaySound(CoD.SFX.MenuBack)
-        LUI.FlowManager.RequestLeaveMenu(menu)
+        LUI.FlowManager.RequestLeaveMenu(a1)
     end)
 
     LUI.Options.InitScrollingList(menu.list, nil)
     menu:CreateBottomDivider()
     menu.optionTextInfo = LUI.Options.AddOptionTextInfo(menu)
+    --]]
 
     return menu
-end)
-
-Engine.GetLuiRoot():registerEventHandler("mod_download_start", function(element, event)
-    local popup = LUI.openpopupmenu("generic_waiting_popup_", {
-        oncancel = function()
-            download.abort()
-        end,
-        withcancel = true,
-        text = "Downloading files..."
-    })
-
-    local file = ""
-
-    popup:registerEventHandler("mod_download_set_file", function(element, event)
-        file = event.request.name
-        popup.text:setText(string.format("Downloading %s...", file))
-    end)
-
-    popup:registerEventHandler("mod_download_progress", function(element, event)
-        popup.text:setText(string.format("Downloading %s (%i%%)...", file, math.floor(event.fraction * 100)))
-    end)
-
-    popup:registerEventHandler("mod_download_done", function()
-        LUI.FlowManager.RequestLeaveMenu(popup)
-    end)
 end)
