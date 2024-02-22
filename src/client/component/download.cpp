@@ -1,19 +1,17 @@
 #include <std_include.hpp>
 #include "loader/component_loader.hpp"
 
-#include "download.hpp"
+#include "aurora_hub.hpp"
 #include "console.hpp"
-#include "scheduler.hpp"
+#include "download.hpp"
 #include "party.hpp"
-
-#include "game/ui_scripting/execution.hpp"
-
-#include "utils/hash.hpp"
+#include "scheduler.hpp"
 
 #include <utils/concurrency.hpp>
+#include <utils/cryptography.hpp>
+#include <utils/hash.hpp>
 #include <utils/http.hpp>
 #include <utils/io.hpp>
-#include <utils/cryptography.hpp>
 
 namespace download
 {
@@ -218,11 +216,25 @@ namespace download
 				ui_scripting::notify("mod_download_done", {});
 			}, scheduler::pipeline::lui);
 
-			scheduler::once([target]
+			if (target.type == game::NA_BAD)
 			{
-				party::connect(target);
-			}, scheduler::pipeline::main);
+				scheduler::once([target]
+				{
+					party::connect(target);
+				}, scheduler::pipeline::main);
+			}
 		}, scheduler::pipeline::async);
+	}
+
+	void manual_start_download(const std::string& url, const ui_scripting::table& table)
+	{
+		game::netadr_s target{};
+		target.type = game::NA_BAD;
+
+		utils::info_string info_string{};
+		info_string.set("sv_wwwBaseUrl", url);
+
+		(void)(party::download_files(target, info_string, false));
 	}
 
 	void stop_download()

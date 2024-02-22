@@ -10,8 +10,6 @@
 
 #include <utils/string.hpp>
 
-#define WEBSITE_DATA_URL "https://raw.githubusercontent.com/h1-mod/website/publish/data"
-
 namespace motd
 {
 	namespace

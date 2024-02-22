@@ -405,73 +405,6 @@ namespace party
 				static_cast<int>(saved_info_response.host.ip[3]));
 		}
 
-		bool download_files(const game::netadr_s& target, const utils::info_string& info, bool allow_download);
-
-		bool should_user_confirm(const game::netadr_s& target)
-		{
-			nlohmann::json obj = get_whitelist_json_object();
-			if (obj != nullptr)
-			{
-				const auto target_ip = target_ip_to_string(target);
-				for (const auto& [key, value] : obj.items())
-				{
-					if (value.is_string() && value.get<std::string>() == target_ip)
-					{
-						return false;
-					}
-				}
-			}
-
-			close_joining_popups();
-			command::execute("lui_open_popup popup_confirmdownload", false);
-
-			return true;
-		}
-
-		bool needs_vid_restart = false;
-
-		bool download_files(const game::netadr_s& target, const utils::info_string& info, bool allow_download)
-		{
-			try
-			{
-				std::vector<download::file_t> files{};
-
-				const auto needs_restart = check_download_mod(info, files);
-				needs_vid_restart = needs_vid_restart || needs_restart;
-				check_download_map(info, files);
-
-				if (files.size() > 0)
-				{
-					if (!allow_download && should_user_confirm(target))
-					{
-						return true;
-					}
-
-					download::stop_download();
-					download::start_download(target, info, files);
-					return true;
-				}
-				else if (needs_restart || needs_vid_restart)
-				{
-					command::execute("vid_restart");
-					needs_vid_restart = false;
-					scheduler::once([=]()
-					{
-						mods::read_stats();
-						connect(target);
-					}, scheduler::pipeline::main);
-					return true;
-				}
-			}
-			catch (const std::exception& e)
-			{
-				menu_error(e.what());
-				return true;
-			}
-
-			return false;
-		}
-
 		void set_new_map(const char* mapname, const char* gametype, game::msg_t* msg)
 		{
 			if (game::SV_Loaded() || fastfiles::is_stock_map(mapname))
@@ -597,7 +530,7 @@ namespace party
 
 		utils::io::write_file(get_whitelist_json_path(), obj.dump(4));
 
-		download_files(saved_info_response.host, saved_info_response.info_string, true);
+		party::download_files(saved_info_response.host, saved_info_response.info_string, true);
 	}
 
 	void menu_error(const std::string& error)
@@ -763,6 +696,73 @@ namespace party
 	std::optional<discord_information> get_server_discord_info()
 	{
 		return server_discord_info;
+	}
+
+	bool should_user_confirm(const game::netadr_s& target)
+	{
+		nlohmann::json obj = get_whitelist_json_object();
+		if (obj != nullptr)
+		{
+			const auto target_ip = target_ip_to_string(target);
+			for (const auto& [key, value] : obj.items())
+			{
+				if (value.is_string() && value.get<std::string>() == target_ip)
+				{
+					return false;
+				}
+			}
+		}
+
+		close_joining_popups();
+		command::execute("lui_open_popup popup_confirmdownload", false);
+
+		return true;
+	}
+
+	bool download_files(const game::netadr_s& target, const utils::info_string& info, bool allow_download);
+
+	bool needs_vid_restart = false;
+
+	bool download_files(const game::netadr_s& target, const utils::info_string& info, bool allow_download)
+	{
+		try
+		{
+			std::vector<download::file_t> files{};
+
+			const auto needs_restart = check_download_mod(info, files);
+			needs_vid_restart = (target.type == game::NA_BAD ? false : (needs_vid_restart ? true : needs_restart));
+			check_download_map(info, files);
+
+			if (files.size() > 0)
+			{
+				if (!allow_download && party::should_user_confirm(target))
+				{
+					return true;
+				}
+
+				download::stop_download();
+				download::start_download(target, info, files);
+				return true;
+			}
+			else if (needs_restart || needs_vid_restart)
+			{
+				command::execute("vid_restart");
+				needs_vid_restart = false;
+				scheduler::once([=]()
+				{
+					mods::read_stats();
+					connect(target);
+				}, scheduler::pipeline::main);
+				return true;
+			}
+		}
+		catch (const std::exception& e)
+		{
+			menu_error(e.what());
+			return true;
+		}
+
+		return false;
 	}
 
 	class component final : public component_interface

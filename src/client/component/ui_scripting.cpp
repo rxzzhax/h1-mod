@@ -7,6 +7,7 @@
 #include "scheduler.hpp"
 #include "command.hpp"
 
+#include "aurora_hub.hpp"
 #include "localized_strings.hpp"
 #include "console.hpp"
 #include "discord.hpp"
@@ -391,13 +392,13 @@ namespace ui_scripting
 			lua["download"] = download_table;
 
 			download_table["abort"] = download::stop_download;
-
 			download_table["userdownloadresponse"] = party::user_download_response;
 			download_table["getwwwurl"] = []
 			{
 				const auto state = party::get_server_connection_state();
 				return state.base_url;
 			};
+			download_table["manual_start_download"] = download::manual_start_download;
 
 			auto discord_table = table();
 			lua["discord"] = discord_table;
@@ -420,6 +421,12 @@ namespace ui_scripting
 			discord_table["reply"]["yes"] = DISCORD_REPLY_YES;
 			discord_table["reply"]["ignore"] = DISCORD_REPLY_IGNORE;
 			discord_table["reply"]["no"] = DISCORD_REPLY_NO;
+
+			auto aurora_hub = table();
+			lua["aurora_hub"] = aurora_hub;
+
+			aurora_hub["get_available_content_data"] = aurora_hub::get_available_content;
+			aurora_hub["manual_start_download"] = download::manual_start_download;
 		}
 
 		void start()

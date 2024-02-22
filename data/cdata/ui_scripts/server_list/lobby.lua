@@ -30,6 +30,12 @@ function menu_xboxlive(f16_arg0)
         menu:AddButton("@MENU_MODS", function(a1)
             LUI.FlowManager.RequestAddMenu(a1, "mods_menu", true, nil)
         end)
+
+        -- Aurora Hub (TODO: MENU_AURORAHUB)
+        game:addlocalizedstring("@MENU_AURORAHUB", "AURORA HUB")
+        menu:AddButton("@MENU_AURORAHUB", function(menu)
+            LUI.FlowManager.RequestAddMenu(menu, "aurora_hub", true, nil)
+        end)
     end
 
     local privateMatchButton = menu:AddButton("@MENU_PRIVATE_MATCH", MPLobbyOnline.OnPrivateMatch,

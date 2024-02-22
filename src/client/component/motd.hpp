@@ -1,5 +1,7 @@
 #pragma once
 
+#define WEBSITE_DATA_URL "https://raw.githubusercontent.com/auroramod/website/publish/data"
+
 #include <utils/http.hpp>
 
 namespace motd

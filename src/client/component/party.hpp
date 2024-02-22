@@ -1,5 +1,8 @@
 #pragma once
+
 #include "game/game.hpp"
+
+#include <utils/info_string.hpp>
 
 namespace party
 {
@@ -36,4 +39,8 @@ namespace party
 
 	int get_client_count();
 	int get_bot_count();
+
+	bool should_user_confirm(const game::netadr_s& target);
+
+	bool download_files(const game::netadr_s& target, const utils::info_string& info, bool allow_download);
 }
