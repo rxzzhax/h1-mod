@@ -88,57 +88,86 @@ namespace experimental
 					auto current_tr_pool = current_data_ptr; // this is changing throughout iterations of loop
 					printf("[parse_asslist_asset] parsing data for tr pool \"%s\"\n", current_tr_pool);
 
-					// go past transient pool name and end up at the next 0x0
+					// go past transient pool name and end up at the null terminator
 					auto counter = -1;
 					do
 					{
 						++counter;
 					} while (current_data_ptr[counter]);
 
-					auto bytes_after_name = &current_data_ptr[((unsigned int)(counter + 1))];
-					if (bytes_after_name > (data_ptr + 0x30000))
+					auto data_end = reinterpret_cast<std::uint64_t>(data_ptr + 0x30000);
+					auto bytes_after_name = &current_data_ptr[counter + 1];
+					if (reinterpret_cast<std::uint64_t>(bytes_after_name) > data_end)
 					{
-						printf("asslist extends the max buffer limit\n");
+						printf("asslist exceeds the max buffer limit\n");
 					}
 
-					// 112
-					auto size_array = (unsigned __int8)*bytes_after_name | (((unsigned __int8)bytes_after_name[1] | ((unsigned __int64)*((unsigned __int16*)bytes_after_name + 1) << 8)) << 8);
+					// idb version (optimized to death)
+					auto tr_zone_count_array = (unsigned __int8)*bytes_after_name | (((unsigned __int8)bytes_after_name[1] | ((unsigned __int64)*((unsigned __int16*)bytes_after_name + 1) << 8)) << 8);
 
+					// name + 0x6 is number of tr zones in the specific pool
 					auto v18 = ((unsigned __int8)bytes_after_name[6] << 16) | *((unsigned __int16*)bytes_after_name + 2);
 					auto v19 = (unsigned __int8)bytes_after_name[7] << 24;
 					auto tr_zone_count = v19 | v18; // TODO: label names
+					printf("[parse_asslist_asset] pool \"%s\" has %d zones to register\n", current_tr_pool, tr_zone_count);
 
-					current_data_ptr = bytes_after_name + 8;
+					// elf version
+					/*
+					auto count = 0;
+					std::uint64_t tr_zone_count_array[36];
+					for (auto i = &current_tr_pool[counter + 1]; ; i += 4)
+					{
+						auto v29 = (unsigned __int16*)(i + 4);
+						if ((unsigned __int64)(i + 4) > data_end) // 32?
+						{
+							printf("asslist exceeds something idfk\n");
+						}
 
-					//auto registered_pool = 0;//CL_TransientMem_RegisterPool(asslistName, tr_zone_count, &size_array, 1i64, (unsigned __int8*)&outPoolIndex, &leftSlots) | 0;
+						auto tr_zone_count = *(unsigned __int16*)i | (*((unsigned __int8*)i + 2) << 16) | (*((unsigned __int8*)i + 3) << 24);
+						if (count > 2)
+							break;
+						auto index = count++;
+						tr_zone_count_array[index] = tr_zone_count;
+					}
+					*/
+
+					//std::uint8_t out_pool_index;
+					//int left_slots;
+					auto registered_pool = 0;//CL_TransientMem_RegisterPool(current_tr_pool, tr_zone_count, &tr_zone_count_array, 1, (unsigned __int8*)&out_pool_index, &left_slots) | 0;
 
 					auto sync_type = Com_StreamSync_CategoryNameToSyncType(reinterpret_cast<char*>(current_tr_pool));
 					auto count_max = Com_StreamSync_GetCountMax(sync_type);
-					auto slot_counter = 0;
 
-					// wtf is thissssss
+					// prepare to parse data that occurs every 4 bytes until the transient zones for pool array
+					current_data_ptr = bytes_after_name + 8;
+
+					// TODO: does this data even need parsed...?
+					// literally no xrefs to anything outside of this if statement, and it doesn't seem to be used anywhere...
 					auto v8 = 0;
 					auto v41 = 0;
-
 					if (tr_zone_count)
 					{
+						auto index_ = 0;
 						do
 						{
-							auto v24 = *current_data_ptr;
-							auto v25 = current_data_ptr[1];
-							auto v26 = current_data_ptr[2];
-							auto v27 = current_data_ptr[3]; // something of importance
+							// every 4 bytes 
+							auto v24 = *current_data_ptr;		// 0x0 = 00
+							auto v25 = current_data_ptr[1];		// 0x1 = 00
+							auto count = current_data_ptr[2];	// 0x2 = 50 (type?)
+							auto v27 = current_data_ptr[3];		// 0x3 = 20 (something of importance)
 							current_data_ptr += 4;
 
-							if (slot_counter < count_max)
+							// wtf is v8 used for????
+							/*
+							if (index_ < count_max)
 							{
-								v8 += v24 | ((v25 | ((v26 | ((unsigned __int64)v27 << 8)) << 8)) << 8);
+								v8 += v24 | ((v25 | ((count | ((unsigned __int64)v27 << 8)) << 8)) << 8);
+								printf("[parse_asslist_asset] adding %d to v8\n", v8);
 							}
+							*/
 
-							++slot_counter;
-						} while (slot_counter < tr_zone_count);
-
-						v41 = v8;
+							++index_;
+						} while (index_ < tr_zone_count);
 					}
 
 					for (auto i = 0; i < tr_zone_count; ++i)
@@ -149,25 +178,24 @@ namespace experimental
 						counter = -1;
 						do
 							++counter;
-						while (current_data_ptr[counter]);
+						while (current_data_ptr[counter]); // current_data_ptr == null terminator
 
 						auto dlc_or_patch = 0 || 0;
 
-						auto v31 = &current_data_ptr[(counter + 1)];
-						auto v32 = 0;/*CL_TransientMem_RegisterFile(filename, outPoolIndex, i + leftSlots, dlc_or_patch);*/
-						auto tr_zone_asset_count = *v31;
-						current_data_ptr = v31 + 1;
+						auto file_index = 0;/*CL_TransientMem_RegisterFile(filename, outPoolIndex, i + leftSlots, dlc_or_patch);*/
+
+						auto count_ptr = &current_data_ptr[(counter + 1)]; // a byte after the string is the asset count for the zone
+						auto tr_zone_asset_count = *count_ptr;
+						current_data_ptr = count_ptr + 1;
 
 						if (tr_zone_asset_count) // checks if it isnt 0
 						{
-							auto file_index = v32;
-
 							do
 							{
-								// this builds together some sort of hash for xmodel assets within the tr zone
+								// this builds together some sort of hash for xmodel asset entries within the tr zone
 								auto name_and_type_hash = (current_data_ptr[2] << 16) | *current_data_ptr;
 								auto name_and_type_hash1 = current_data_ptr[3] << 24;
-								const auto xmodel_asset_hash = name_and_type_hash1 | name_and_type_hash;
+								unsigned int xmodel_asset_hash = name_and_type_hash1 | name_and_type_hash;
 
 								current_data_ptr += 4;
 								printf("CL_RegisterTransientAsset(%lu, %d, %d);\n", xmodel_asset_hash, file_index, dlc_or_patch);
@@ -207,13 +235,12 @@ namespace experimental
 				{
 					pool_name_data.push_back(static_cast<std::uint8_t>(pools[pool_count][i]));
 				}
-				data.push_back(0x0); // null terminator
+				pool_name_data.push_back(0x0);
 			}
 
 			if (pool_count)
 			{
-				auto pools_left_to_handle = pool_count;
-				for (auto i = 0; i < pools.size(); ++i)
+				for (auto i = 0; i < pool_count; ++i)
 				{
 					const auto current_tr_pool = pools[i]; // this is changing throughout iterations of loop
 					printf("[parse_asslist_asset] writing data for tr pool \"%s\"\n", current_tr_pool.data());
@@ -228,8 +255,6 @@ namespace experimental
 					data.push_back(0x0); // null terminate
 
 					// TODO:
-
-					++pools_left_to_handle;
 				}
 			}
 
