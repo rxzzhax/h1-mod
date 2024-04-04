@@ -192,7 +192,7 @@ namespace experimental
 						{
 							do
 							{
-								// this builds together some sort of hash for xmodel asset entries within the tr zone
+								// this builds together some sort of hash for the xmodel asset entries within the tr zone
 								auto name_and_type_hash = (current_data_ptr[2] << 16) | *current_data_ptr;
 								auto name_and_type_hash1 = current_data_ptr[3] << 24;
 								unsigned int xmodel_asset_hash = name_and_type_hash1 | name_and_type_hash;
@@ -215,18 +215,16 @@ namespace experimental
 		{
 			std::vector<std::string> pools;
 			pools.push_back("mp_viewweap");
-			pools.push_back("mp_viewarm");
-
-			auto pool_count = 2;
 
 			std::vector<std::uint8_t> data;
 
 			data.push_back(0xFE);			// 0x0 - TRANSIENT_HEADER
-			data.push_back(pool_count);		// 0x1 - transient pool count
+			data.push_back(pools.size());	// 0x1 - transient pool count
 			data.push_back(0x0);			// 0x2
 			data.push_back(0x0);			// 0x3
 			data.push_back(0x0);			// 0x4
 
+			/*
 			std::vector<std::uint8_t> pool_name_data;
 
 			for (auto pool_count = 0; pool_count < pools.size(); ++pool_count)
@@ -237,35 +235,38 @@ namespace experimental
 				}
 				pool_name_data.push_back(0x0);
 			}
+			*/
 
-			if (pool_count)
+#define PUSH_BACK_STRING(string) \
+			for (auto i = 0; i < string.size(); ++i) \
+			{ \
+				data.push_back(static_cast<std::uint8_t>(string[i]));\
+			} \
+			data.push_back(0x0); // null terminator
+
+			// iterate through every pool we need to parse
+			for (auto pool_count = 0; pool_count < pools.size(); ++pool_count)
 			{
-				for (auto i = 0; i < pool_count; ++i)
+				PUSH_BACK_STRING(pools[pool_count]);		// pool name
+				PUSH_BACK_STRING("mp_vm_ak47_base_tr"s);	// first zone name
+
+				auto xmodel_count = 1;
+				data.push_back(xmodel_count);				// xmodel count
+				// iterate through xmodels
+				for (auto i = 0; i < xmodel_count; ++i)
 				{
-					const auto current_tr_pool = pools[i]; // this is changing throughout iterations of loop
-					printf("[parse_asslist_asset] writing data for tr pool \"%s\"\n", current_tr_pool.data());
+					// 06 CF 85 02
+					// contains a "name and type" hash for each xmodel in file
 
-					// skip past transient pool names
-					auto counter = -1;
-					do
-					{
-						++counter;
-						data.push_back(pool_name_data.data()[counter]); // write name
-					} while (pool_name_data.data()[counter]);
-					data.push_back(0x0); // null terminate
-
-					// TODO:
+					// example data
+					data.push_back(0x06);
+					data.push_back(0xCF);
+					data.push_back(0x85);
+					data.push_back(0x02);
 				}
 			}
 
-			// skip past transient pool names
-			auto counter = -1;
-			do
-			{
-				++counter;
-				data.push_back(pool_name_data.data()[counter]);
-			} while (pool_name_data.data()[counter]);
-			data.push_back(0x0);
+			data.push_back(0xFF); // end of file
 
 			std::string buffer(data.begin(), data.end());
 			utils::io::write_file("h2m-mod/generated.asslist", buffer);
