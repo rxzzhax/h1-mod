@@ -4,6 +4,7 @@
 #include "command.hpp"
 #include "console.hpp"
 #include "dvars.hpp"
+#include "filesystem.hpp"
 #include "scheduler.hpp"
 
 #include "game/game.hpp"
@@ -13,10 +14,15 @@
 #include <utils/io.hpp>
 
 #ifdef DEBUG
+
+#define DEBUG_TRANSIENT_ZONES
+
 namespace experimental
 {
 	namespace
 	{
+		utils::memory::allocator rawfile_allocator;
+
 		enum sync_type
 		{
 			MP_INVALID_ASSET = -1,
@@ -29,21 +35,29 @@ namespace experimental
 			MP_ASSET_COUNT	= 0x6,
 		};
 
+		enum transient_pool_type
+		{
+			MP_INVALID_POOL		= 0x0,
+			MP_CHAR_HEAD_POOL	= 0x50,
+			MP_VIEWARM_POOL		= 0xB0,
+			MP_VIEWWEAP_POOL	= 0xC0,
+		};
+
 		// 0x4E7BB0
 		sync_type Com_StreamSync_CategoryNameToSyncType(const char* name)
 		{
 			if (!strcmp(name, "mp_char_shirt"))
-				return MP_CHAR_SHIRT;
+				return sync_type::MP_CHAR_SHIRT;
 			else if (!strcmp(name, "mp_char_head"))
-				return MP_CHAR_HEAD;
+				return sync_type::MP_CHAR_HEAD;
 			else if (!strcmp(name, "mp_char_gloves"))
-				return MP_CHAR_GLOVES;
+				return sync_type::MP_CHAR_GLOVES;
 			else if (!strcmp(name, "mp_worldweap"))
-				return MP_WORLDWEAP;
+				return sync_type::MP_WORLDWEAP;
 			else if (!strcmp(name, "mp_viewarm"))
-				return MP_VIEWARM;
+				return sync_type::MP_VIEWARM;
 			else if (!strcmp(name, "mp_viewweap"))
-				return MP_VIEWWEAP;
+				return sync_type::MP_VIEWWEAP;
 
 			return MP_INVALID_ASSET;
 		}
@@ -74,59 +88,47 @@ namespace experimental
 			data.assign(data_.begin(), data_.end());
 
 			auto data_ptr = data.data();
-			unsigned char* current_data_ptr = data.data() + 5;
+			unsigned char* current_char_in_buffer = data.data() + 5;
 
 			// 0x0 is always 0xFE
 
 			// 0x1 is the amount of transient pools to iterate over (5 from example)
 			auto pool_count = data_ptr[1] | (data_ptr[2] << 8) | (data_ptr[3] << 16) | (data_ptr[4] << 24);
-			if (pool_count)
+			if (pool_count) // common_mp should return 5
 			{
 				auto pools_left_to_handle = pool_count;
 				do
 				{
-					auto current_tr_pool = current_data_ptr; // this is changing throughout iterations of loop
+					auto current_tr_pool = current_char_in_buffer; // this is changing throughout iterations of loop
 					printf("[parse_asslist_asset] parsing data for tr pool \"%s\"\n", current_tr_pool);
 
 					// go past transient pool name and end up at the null terminator
-					auto counter = -1;
+					auto string_length = -1;
 					do
 					{
-						++counter;
-					} while (current_data_ptr[counter]);
+						++string_length;
+					} while (current_char_in_buffer[string_length]);
 
-					auto data_end = reinterpret_cast<std::uint64_t>(data_ptr + 0x30000);
-					auto bytes_after_name = &current_data_ptr[counter + 1];
-					if (reinterpret_cast<std::uint64_t>(bytes_after_name) > data_end)
-					{
-						printf("asslist exceeds the max buffer limit\n");
-					}
-
-					// idb version (optimized to death)
-					auto tr_zone_count_array = (unsigned __int8)*bytes_after_name | (((unsigned __int8)bytes_after_name[1] | ((unsigned __int64)*((unsigned __int16*)bytes_after_name + 1) << 8)) << 8);
+					std::uint8_t* bytes_after_name = &current_char_in_buffer[string_length + 1]; // 00 00 C0 71 (this var + 1 = C0 [...] [...])
+					
+					// idb version (it... works?)
+					std::uint64_t tr_zone_count_array = *bytes_after_name | (((unsigned __int8)bytes_after_name[1] | ((unsigned __int64)*((unsigned __int16*)bytes_after_name + 1) << 8)) << 8);
 
 					// name + 0x6 is number of tr zones in the specific pool
-					auto v18 = ((unsigned __int8)bytes_after_name[6] << 16) | *((unsigned __int16*)bytes_after_name + 2);
-					auto v19 = (unsigned __int8)bytes_after_name[7] << 24;
-					auto tr_zone_count = v19 | v18; // TODO: label names
-					printf("[parse_asslist_asset] pool \"%s\" has %d zones to register\n", current_tr_pool, tr_zone_count);
+					auto unknown_var_v18 = ((unsigned __int8)bytes_after_name[6] << 16) | *((unsigned __int16*)bytes_after_name + 2);
+					auto unknown_var_v19 = (unsigned __int8)bytes_after_name[7] << 24;
+					auto tr_zone_count = unknown_var_v19 | unknown_var_v18; // TODO: label names
+					printf("[parse_asslist_asset] pool \"%s\" has %d zones to register\n", current_tr_pool, tr_zone_count); // this prints readable values
 
 					// elf version
 					/*
-					auto count = 0;
-					std::uint64_t tr_zone_count_array[36];
-					for (auto i = &current_tr_pool[counter + 1]; ; i += 4)
+					auto hardcoded_count_lol_idk = 0;
+					std::uint64_t tr_zone_count_array[36]{};
+					for (auto idk_iterator = bytes_after_name; ; idk_iterator += 4)
 					{
-						auto v29 = (unsigned __int16*)(i + 4);
-						if ((unsigned __int64)(i + 4) > data_end) // 32?
-						{
-							printf("asslist exceeds something idfk\n");
-						}
-
-						auto tr_zone_count = *(unsigned __int16*)i | (*((unsigned __int8*)i + 2) << 16) | (*((unsigned __int8*)i + 3) << 24);
-						if (count > 2)
-							break;
-						auto index = count++;
+						auto tr_zone_count = *(unsigned __int16*)idk_iterator | (*((unsigned __int8*)idk_iterator + 2) << 16) | (*((unsigned __int8*)idk_iterator + 3) << 24);
+						if (hardcoded_count_lol_idk > 2) break;
+						auto index = hardcoded_count_lol_idk++;
 						tr_zone_count_array[index] = tr_zone_count;
 					}
 					*/
@@ -139,10 +141,14 @@ namespace experimental
 					auto count_max = Com_StreamSync_GetCountMax(sync_type);
 
 					// prepare to parse data that occurs every 4 bytes until the transient zones for pool array
-					current_data_ptr = bytes_after_name + 8;
+					current_char_in_buffer = bytes_after_name + 8; // goes past the "50 20 00 3B 00 00 00 00" and now we're handling data for the tr zones
 
-					// TODO: does this data even need parsed...?
-					// literally no xrefs to anything outside of this if statement, and it doesn't seem to be used anywhere...
+					/*
+						this code is literally wrong but its important for identifying information about each transient zone
+
+						idk when but 
+					*/
+					/*
 					auto v8 = 0;
 					auto v41 = 0;
 					if (tr_zone_count)
@@ -150,54 +156,56 @@ namespace experimental
 						auto index_ = 0;
 						do
 						{
-							// every 4 bytes 
-							auto v24 = *current_data_ptr;		// 0x0 = 00
-							auto v25 = current_data_ptr[1];		// 0x1 = 00
-							auto count = current_data_ptr[2];	// 0x2 = 50 (type?)
-							auto v27 = current_data_ptr[3];		// 0x3 = 20 (something of importance)
-							current_data_ptr += 4;
+							// every 4 bytes
+							auto idk_one	= *current_char_in_buffer;			// 0x0 = 00
+							auto idk_two	= current_char_in_buffer[1];		// 0x1 = 50
+							auto idk_three	= current_char_in_buffer[2];		// 0x2 = 20
+							auto idk_four	= current_char_in_buffer[3];		// 0x3 = 00
+							current_char_in_buffer += 4;
 
 							// wtf is v8 used for????
-							/*
 							if (index_ < count_max)
 							{
 								v8 += v24 | ((v25 | ((count | ((unsigned __int64)v27 << 8)) << 8)) << 8);
 								printf("[parse_asslist_asset] adding %d to v8\n", v8);
 							}
-							*/
 
 							++index_;
 						} while (index_ < tr_zone_count);
 					}
+					*/
 
 					for (auto i = 0; i < tr_zone_count; ++i)
 					{
-						auto tr_zone_name = current_data_ptr;
+						auto tr_zone_name = current_char_in_buffer;
 						printf("[parse_asslist_asset] handling tr file \"%s\" (pool: \"%s\")\n", tr_zone_name, current_tr_pool);
 
-						counter = -1;
+						string_length = -1;
 						do
-							++counter;
-						while (current_data_ptr[counter]); // current_data_ptr == null terminator
+							++string_length;
+						while (current_char_in_buffer[string_length]); // current_char_in_buffer == null terminator
 
 						auto dlc_or_patch = 0 || 0;
 
-						auto file_index = 0;/*CL_TransientMem_RegisterFile(filename, outPoolIndex, i + leftSlots, dlc_or_patch);*/
+						unsigned int file_index = 0;/*CL_TransientMem_RegisterFile(filename, outPoolIndex, i + leftSlots, dlc_or_patch);*/
 
-						auto count_ptr = &current_data_ptr[(counter + 1)]; // a byte after the string is the asset count for the zone
+						auto count_ptr = &current_char_in_buffer[(string_length + 1)]; // a byte after the string is the asset count for the zone
 						auto tr_zone_asset_count = *count_ptr;
-						current_data_ptr = count_ptr + 1;
+						current_char_in_buffer = count_ptr + 1;
 
 						if (tr_zone_asset_count) // checks if it isnt 0
 						{
 							do
 							{
 								// this builds together some sort of hash for the xmodel asset entries within the tr zone
-								auto name_and_type_hash = (current_data_ptr[2] << 16) | *current_data_ptr;
-								auto name_and_type_hash1 = current_data_ptr[3] << 24;
+								auto name_and_type_hash = (current_char_in_buffer[2] << 16) | *current_char_in_buffer;
+								auto name_and_type_hash1 = current_char_in_buffer[3] << 24;
 								unsigned int xmodel_asset_hash = name_and_type_hash1 | name_and_type_hash;
 
-								current_data_ptr += 4;
+								// not sure if order matters but just following it as PDB goes lol
+								//const auto xmodel_asset_hash = ( *(current_char_in_buffer[4]))
+
+								current_char_in_buffer += 4; // check the next name and type hash
 								printf("CL_RegisterTransientAsset(%lu, %d, %d);\n", xmodel_asset_hash, file_index, dlc_or_patch);
 
 								//CL_RegisterTransientAsset(name_and_type_hash1 | name_and_type_hash, file_index, dlc_or_patch);
@@ -209,6 +217,24 @@ namespace experimental
 					--pools_left_to_handle;
 				} while (pools_left_to_handle);
 			}
+		}
+
+		unsigned int hash_xmodel_name(const char* xmodel_name)
+		{
+			auto v4 = *xmodel_name;
+			auto i = 0;
+			for (i = 0; *xmodel_name; v4 = *xmodel_name)
+			{
+				++xmodel_name;
+				i = v4 ^ (0x1000193 * i);
+			}
+
+			const auto result = (i ^ 7);
+
+			// TODO: break result into 4 different variables because it needs pushed back into a std::vector<std::uint8_t>
+			// basically, if the return value is 0x86E2AAEA, it needs to be broken into 0x86, 0xE2, 0xAA, 0xEA
+
+			return result;
 		}
 
 		void write_asslist_asset()
@@ -242,27 +268,90 @@ namespace experimental
 			{ \
 				data.push_back(static_cast<std::uint8_t>(string[i]));\
 			} \
+
+#define PUSH_BACK_STRING_(string) \
+			for (auto i = 0; i < string.size(); ++i) \
+			{ \
+				data.push_back(static_cast<std::uint8_t>(string[i]));\
+			} \
 			data.push_back(0x0); // null terminator
+
+			std::vector<std::string> tr_zones;
+			tr_zones.push_back("mp_h2_vm_m4_base_tr");
 
 			// iterate through every pool we need to parse
 			for (auto pool_count = 0; pool_count < pools.size(); ++pool_count)
 			{
-				PUSH_BACK_STRING(pools[pool_count]);		// pool name
-				PUSH_BACK_STRING("mp_vm_ak47_base_tr"s);	// first zone name
+				PUSH_BACK_STRING_(pools[pool_count]); // pool name
+				//data.push_back(0x00); // ... don't ask me
 
-				auto xmodel_count = 1;
-				data.push_back(xmodel_count);				// xmodel count
-				// iterate through xmodels
-				for (auto i = 0; i < xmodel_count; ++i)
+				/*
+						00 50 20 00 3B 00 00 00 (mp_char_head)
+						00 B0 24 00 08 00 00 00 (mp_viewarm)
+						00 C0 71 00 34 00 00 00 (mp_viewweap)
+						00 C0 82 00 1D 00 00 00 (mp_char_shirt)
+
+						byte breakdown:
+						0 = idk_1		(0x00)
+						1 = type		(0xC0)
+						2 = count?		(0x24, idk what for)
+						3 = idk			(0x00, maybe always 0)
+						4 = zone count	(0x34)
+				*/
+
+				data.push_back(0x00);	// 0x0
+				data.push_back(transient_pool_type::MP_VIEWWEAP_POOL); // 
+				data.push_back(0x71);	// 113
+				data.push_back(0x0);	// 0
+				data.push_back(0x1);	// 0x52
+				for (auto zero_spam = 0; zero_spam < 4; ++zero_spam)
 				{
-					// 06 CF 85 02
-					// contains a "name and type" hash for each xmodel in file
+					data.push_back(0x00); // bunch of 0s idek
+				}
 
-					// example data
-					data.push_back(0x06);
-					data.push_back(0xCF);
-					data.push_back(0x85);
-					data.push_back(0x02);
+				// reiterate through all assets in pool (TODO: needed?)
+				for (auto tr_zone_count = 0; tr_zone_count < tr_zones.size(); ++tr_zone_count)
+				{
+					/*
+						00 C0 71 00 // mp_vm_ak47_base_tr
+						00 20 4D 00 // mp_vm_ak47_btw_tr
+
+						00 C0 71 00 // mp_vm_ak74u_base_tr
+
+						00 A0 4C 00 // mp_vm_barrett_base_tr
+						00 20 4D 00 // mp_vm_barrett_asn_tr
+
+						00 10 46 00 // mp_vm_beretta_base_tr
+						00 A0 42 00 // mp_vm_colt45_base_tr
+
+						mp_vm_m4_base_tr
+					*/
+					// similar patterns here and there, but im not sure.
+
+					// this data occurs every 4 bytes
+					data.push_back(0x00);
+					data.push_back(0xC0);
+					data.push_back(0x71);
+					data.push_back(0x00);
+				}
+
+				// reiterate through all assets in pool again
+				for (auto tr_zone_count = 0; tr_zone_count < tr_zones.size(); ++tr_zone_count)
+				{
+					PUSH_BACK_STRING_(tr_zones[tr_zone_count]); // tr zone name
+
+					auto xmodel_count = 1; // make this not hardcoded lol
+					data.push_back(xmodel_count);
+					// iterate through xmodels
+					for (auto i = 0; i < xmodel_count; ++i)
+					{
+						// contains a "name and type" hash for each xmodel in file
+						const auto name_and_type_hash = hash_xmodel_name(tr_zones[tr_zone_count].data());
+						data.push_back( static_cast<std::uint8_t>( (name_and_type_hash >> 24) & 0xFF) );
+						data.push_back( static_cast<std::uint8_t>( (name_and_type_hash >> 16) & 0xFF) );
+						data.push_back( static_cast<std::uint8_t>( (name_and_type_hash >> 8) & 0xFF) );
+						data.push_back( static_cast<std::uint8_t>( name_and_type_hash & 0xFF) );
+					}
 				}
 			}
 
@@ -270,6 +359,60 @@ namespace experimental
 
 			std::string buffer(data.begin(), data.end());
 			utils::io::write_file("h2m-mod/generated.asslist", buffer);
+		}
+
+		utils::hook::detour bruh_hook;
+		bool bruh_stub(const char* xmodel_name, const char type)
+		{
+			/*
+			console::debug("CL_CanUseTransientAsset(%s, %d)\n", xmodel_name, a2);
+			return bruh_hook.invoke<bool>(xmodel_name, a2);
+			*/
+
+			auto name_and_type_hash = 7; // type is 7
+			for (auto i = *xmodel_name; *xmodel_name; i = *xmodel_name)
+			{
+				++xmodel_name;
+				name_and_type_hash = i ^ (0x1000193 * name_and_type_hash);
+			}
+
+			printf("");
+
+			return bruh_hook.invoke<bool>(xmodel_name, type);
+		}
+
+		game::RawFile* load_custom_asslist(const char* name)
+		{
+			std::string data;
+			if (!filesystem::read_file(name, &data))
+			{
+				return nullptr;
+			}
+
+			const auto rawfile_ptr = static_cast<game::RawFile*>(rawfile_allocator.allocate(sizeof(game::RawFile)));
+			rawfile_ptr->name = name;
+			rawfile_ptr->compressedLen = 0;
+			rawfile_ptr->len = data.size();
+
+			rawfile_ptr->buffer = static_cast<char*>(rawfile_allocator.allocate(data.size() + 1));
+			std::memcpy(const_cast<char*>(rawfile_ptr->buffer), data.data(), data.size());
+
+			return rawfile_ptr;
+		}
+
+		utils::hook::detour find_asslist_hook;
+		game::RawFile* find_asslist_stub(game::XAssetType type, const char* name, int allow_create_default)
+		{
+			console::debug("looking for \"%s\"\n", name);
+
+			auto* asslist = load_custom_asslist(name);
+			if (asslist)
+			{
+				console::debug("loading custom asslist for \"%s\"\n", name);
+				return asslist;
+			}
+
+			return game::DB_FindXAssetHeader(type, name, allow_create_default).rawfile;
 		}
 	}
 
@@ -287,6 +430,24 @@ namespace experimental
 			{
 				write_asslist_asset();
 			});
+
+			command::add("hash_xmodel_name", [](const command::params& params)
+			{
+				if (params.size() < 2)
+				{
+					console::info("hash_xmodel_name <name> : creates a hash for the xmodel name\n");
+					return;
+				}
+
+				auto xmodel_name = params.get(1);
+
+				const auto res = hash_xmodel_name(xmodel_name);
+
+				printf("");
+			});
+
+			//bruh_hook.create(0x75000_b, bruh_stub);
+			//find_asslist_hook.create(0x39918A_b, find_asslist_stub);
 
 			// fix static model's lighting going black sometimes
 			//dvars::override::register_int("r_smodelInstancedThreshold", 0, 0, 128, 0x0);
