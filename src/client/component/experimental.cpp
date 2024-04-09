@@ -221,20 +221,17 @@ namespace experimental
 
 		unsigned int hash_xmodel_name(const char* xmodel_name)
 		{
-			auto v4 = *xmodel_name;
-			auto i = 0;
-			for (i = 0; *xmodel_name; v4 = *xmodel_name)
+			auto name_and_type_hash = 7u;
+			for (auto i = *xmodel_name; *xmodel_name; i = *xmodel_name)
 			{
 				++xmodel_name;
-				i = v4 ^ (0x1000193 * i);
+				name_and_type_hash = i ^ (0x1000193 * name_and_type_hash);
 			}
-
-			const auto result = (i ^ 7);
 
 			// TODO: break result into 4 different variables because it needs pushed back into a std::vector<std::uint8_t>
 			// basically, if the return value is 0x86E2AAEA, it needs to be broken into 0x86, 0xE2, 0xAA, 0xEA
 
-			return result;
+			return name_and_type_hash;
 		}
 
 		void write_asslist_asset()
