@@ -2073,14 +2073,17 @@ namespace game
 
 		struct client_t
 		{
-			clientHeader_t header;
-			char __pad0[265164];
-			int reliableSequence;
-			int reliableAcknowledge;
-			char __pad1[397928];
-			gentity_s* gentity;
-			char name[32];
-			char __pad5[348752];
+			// 663208
+
+			clientHeader_t header;	// 0
+			char __pad0[265164];	// 68
+			int reliableSequence;	// 265232
+			int reliableAcknowledge;// 265236
+			char __pad1[397928];	// 265240
+			gentity_s* gentity;		// 663168
+			char name[32];			// 663176
+			int lastPacketTime;		// 663208
+			char __pad5[348748];	// 636212
 		}; // size = 1011960
 
 		static_assert(sizeof(client_t) == 1011960);
@@ -2846,4 +2849,109 @@ namespace game
 			HksError m_error;
 		};
 	}
+
+	struct ClientVoicePacket_t
+	{
+		char data[256];
+		int dataSize;
+	};
+
+	struct voiceCommunication_t
+	{
+		ClientVoicePacket_t voicePackets[10];	// 0
+		int voicePacketCount;					// 2600
+		int voicePacketLastTransmit;			// 2604
+		int packetsPerSec;
+		int packetsPerSecStart;
+	};
+
+	struct VoicePacket_t
+	{
+		char talker;
+		char data[256];
+		int dataSize;
+	};
+
+	enum clientState_t
+	{
+		CS_FREE = 0x0,
+		CS_ZOMBIE = 0x1,
+		CS_RECONNECTING = 0x2,
+		CS_CONNECTED = 0x3,
+		CS_CLIENTLOADING = 0x4,
+		CS_ACTIVE = 0x5,
+	};
+
+	struct netProfilePacket_t
+	{
+		int iTime;
+		int iSize;
+		int bFragment;
+	};
+
+	struct netProfileStream_t
+	{
+		netProfilePacket_t packets[60];
+		int iCurrPacket;
+		int iBytesPerSecond;
+		int iLastBPSCalcTime;
+		int iCountedPackets;
+		int iCountedFragments;
+		int iFragmentPercentage;
+		int iLargestPacket;
+		int iSmallestPacket;
+	};
+
+	struct netProfileInfo_t
+	{
+		netProfileStream_t send;
+		netProfileStream_t recieve;
+	};
+
+	struct netchan_t
+	{
+		int outgoingSequence;
+		netsrc_t sock;
+		int dropped;
+		int incomingSequence;
+		netadr_s remoteAddress;
+		int fragmentSequence;
+		int fragmentLength;
+		char* fragmentBuffer;
+		int fragmentBufferSize;
+		int unsentFragments;
+		int unsentFragmentStart;
+		int unsentLength;
+		char* unsentBuffer;
+		int unsentBufferSize;
+		netProfileInfo_t prof;
+	};
+
+	struct clientConnection_t
+	{
+		int qport;
+		int clientNum;
+		int lastPacketTime;
+		netadr_s serverAddress;
+		int connectLastSendTime;
+		int connectPacketCount;
+		char serverMessage[256];
+		int challenge;
+		int checksumFeed;
+		int reliableSequence;
+		int reliableAcknowledge;
+		char reliableCommands[128][1024];
+		int serverMessageSequence;
+		int serverCommandSequence;
+		int lastExecutedServerCommand;
+		char serverCommands[128][1024];
+		bool isServerRestarting;
+		netchan_t netchan;
+		char netchanOutgoingBuffer[2048];
+		char netchanIncomingBuffer[131072];
+		netProfileInfo_t OOBProf;
+		unsigned int statPacketsToSend;
+		int statPacketSendTime[31];
+		unsigned int currentGamestatePacket;
+	};
 }

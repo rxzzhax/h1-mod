@@ -132,10 +132,23 @@ namespace game
 
 	WEAK symbol<Material*(const char* material)> Material_RegisterHandle{0x56EA20, 0x692360};
 
+	// MSG
+	WEAK symbol<void(msg_t* msg, unsigned char* data, int len)> MSG_Init{0x0, 0x4EB1D0};
+
+	WEAK symbol<int(msg_t* msg)> MSG_ReadByte{0x0, 0x4EB510};
+	WEAK symbol<void(msg_t* msg, void* data, int len)> MSG_ReadData{0x0, 0x4EB570};
+	WEAK symbol<int(msg_t* msg)> MSG_ReadShort{0x0, 0x4EB890};
 	WEAK symbol<char*(msg_t* msg, char* buffer, unsigned int max_chars)> MSG_ReadStringLine{0x0, 0x4EB9D0};
 
+	WEAK symbol<void(msg_t* msg, char c)> MSG_WriteByte{0x0, 0x4EBF30};
+	WEAK symbol<void(msg_t* msg, const void* data, int len)> MSG_WriteData{0x0, 0x4EBF50};
+	WEAK symbol<void(msg_t* msg, int s)> MSG_WriteShort{0x0, 0x4EC020};
+	WEAK symbol<void(msg_t* msg, const char* str)> MSG_WriteString{0x0, 0x4EC050};
+
+	// NET
 	WEAK symbol<void(netadr_s*, sockaddr*)> NetadrToSockadr{0x416580, 0x59E580};
-	WEAK symbol<void(netsrc_t, netadr_s*, const char*)> NET_OutOfBandPrint{0x3AA550, 0x4F1EB0};
+	WEAK symbol<void(netsrc_t sock, netadr_s* addr, const char*)> NET_OutOfBandPrint{0x3AA550, 0x4F1EB0};
+	WEAK symbol<int(netsrc_t sock, netadr_s* addr, char* data, int len)> NET_OutOfBandVoiceData{0x0, 0x4F1FA0};
 	WEAK symbol<void(netsrc_t sock, int length, const void* data, const netadr_s* to)> NET_SendLoopPacket{0x0, 0x4F2070};
 	WEAK symbol<bool(const char* s, netadr_s* a)> NET_StringToAdr{0x0, 0x4F2150};
 
@@ -358,6 +371,12 @@ namespace game
 		WEAK symbol<int> svs_numclients{0x0, 0x2DC338C};
 		WEAK symbol<int> gameTime{0x0, 0x7361F9C};
 
+		WEAK symbol<int> svs_time{0x0, 0x2DC3380};
+
+		WEAK symbol<int> keyCatchers{0x0, 0x2EC82C4};
+
+		WEAK symbol<clientConnection_t*> clientConnections{0x0, 0x2EC8510};
+
 		WEAK symbol<int> sv_serverId_value{0x0, 0xB7F9630};
 
 		WEAK symbol<bool> virtualLobby_loaded{0x0, 0x2E6EC9D};
@@ -366,6 +385,11 @@ namespace game
 		WEAK symbol<connect_state_t*> connect_state{0x0, 0x2EC8510};
 
 		WEAK symbol<XZone> g_zones{0x0, 0x5F292B0};
+
+		WEAK symbol<voiceCommunication_t> cl_voiceCommunication{0x0, 0x2FCC7A0};
+
+		WEAK symbol<int[18]> qword_C9DD1B0{0x0, 0xC9DD1B0};
+		WEAK symbol<int[18]> qword_2E6FA3C{0x0, 0x2E6FA3C};
 	}
 
 	namespace sp

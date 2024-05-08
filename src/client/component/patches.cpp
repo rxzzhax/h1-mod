@@ -467,7 +467,7 @@ namespace patches
 			cl_gamepad_scrolling_buttons_hook.create(0x133210_b, cl_gamepad_scrolling_buttons_stub);
 
 			// Prevent the game from modifying Windows microphone volume (since voice chat isn't used)
-			utils::hook::set<uint8_t>(0x5BEEA0_b, 0xC3); // Mixer_SetWaveInRecordLevels
+			//utils::hook::set<uint8_t>(0x5BEEA0_b, 0xC3); // Mixer_SetWaveInRecordLevels
 
 			utils::hook::set<uint8_t>(0x556250_b, 0xC3); // disable host migration
 		}

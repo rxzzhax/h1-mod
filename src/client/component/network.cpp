@@ -16,6 +16,7 @@ namespace network
 {
 	namespace
 	{
+		std::unordered_map<std::string, raw_callback> raw_callbacks;
 
 		std::unordered_map<std::string, callback>& get_callbacks()
 		{
@@ -27,15 +28,25 @@ namespace network
 		{
 			const auto cmd_string = utils::string::to_lower(command);
 			auto& callbacks = get_callbacks();
-			const auto handler = callbacks.find(cmd_string);
 			const auto offset = cmd_string.size() + 5;
-			if (message->cursize < offset || handler == callbacks.end())
+			if (message->cursize < offset)
+			{
+				return false;
+			}
+
+			// raw handler
+			if (const auto raw_handler = raw_callbacks.find(cmd_string); raw_handler != raw_callbacks.end())
+			{
+				raw_handler->second(address, message);
+			}
+
+			const auto handler = callbacks.find(cmd_string);
+			if (handler == callbacks.end())
 			{
 				return false;
 			}
 
 			const std::string data(message->data + offset, message->cursize - offset);
-
 			handler->second(*address, data);
 #ifdef DEBUG
 			console::info("[Network] Handling command %s\n", cmd_string.data());
@@ -142,6 +153,11 @@ namespace network
 	void on(const std::string& command, const callback& callback)
 	{
 		get_callbacks()[utils::string::to_lower(command)] = callback;
+	}
+
+	void on_raw(const std::string command, const raw_callback& callback)
+	{
+		raw_callbacks[utils::string::to_lower(command)] = callback;
 	}
 
 	int dw_send_to_stub(const int size, const char* src, game::netadr_s* to)

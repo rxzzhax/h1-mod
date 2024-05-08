@@ -87,6 +87,12 @@ namespace game
 		cmd_argsPrivate->totalUsedTextPool -= cmd_argsPrivate->usedTextPool[nesting];
 	}
 
+	connstate_t CL_GetLocalClientConnectionState(const int localClientNum)
+	{
+		// cant find actual way to reference :/
+		return static_cast<connstate_t>(*(keyCatchers + 1));
+	}
+
 	namespace environment
 	{
 		launcher::mode mode = launcher::mode::none;

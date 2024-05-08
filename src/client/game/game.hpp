@@ -74,6 +74,8 @@ namespace game
 
 	void Cmd_TokenizeString(const char* text);
 	void Cmd_EndTokenizeString();
+
+	connstate_t CL_GetLocalClientConnectionState(const int localClientNum);
 }
 
 size_t operator"" _b(const size_t ptr);
