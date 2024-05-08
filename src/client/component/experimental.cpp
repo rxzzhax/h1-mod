@@ -455,7 +455,7 @@ namespace experimental
 					// Voice_IncomingVoiceData
 					utils::hook::invoke<void>(0x5BF370_b, nullptr, packet.talker, reinterpret_cast<unsigned char*>(packet.data), packet.dataSize);
 				
-					s_clientTalkTime[packet.talker] = game::Sys_Milliseconds();
+					//s_clientTalkTime[packet.talker] = game::Sys_Milliseconds();
 				}
 			}
 		}
