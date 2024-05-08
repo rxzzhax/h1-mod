@@ -24,6 +24,7 @@ namespace experimental
 
 		bool mute_list[MAX_CLIENTS];
 		bool s_playerMute[MAX_CLIENTS];
+		//int s_clientTalkTime[MAX_CLIENTS];
 
 		game::dvar_t* sv_voice = nullptr;
 #ifdef DEBUG
@@ -73,22 +74,23 @@ namespace experimental
 			const auto max_clients = get_max_clients();
 
 			auto packet_count = voice_packet_count[client_num];
-			/*
 			if (packet_count > MAX_SERVER_QUEUED_VOICE_PACKETS)
 			{
+#ifdef DEBUG
+				console::error("packet_count exceeds MAX_SERVER_QUEUED_VOICE_PACKETS (%d/%d)\n", packet_count, MAX_SERVER_QUEUED_VOICE_PACKETS);
+#endif
 				return;
 			}
-			*/
 
 			if (packet->dataSize <= 0 || packet->dataSize > MAX_VOICE_PACKET_DATA)
 			{
 				return;
 			}
 
-			voice_packets[client_num][packet_count].dataSize = packet->dataSize;
-			std::memcpy(voice_packets[client_num][packet_count].data, packet->data, packet->dataSize);
+			voice_packets[client_num][voice_packet_count[client_num]].dataSize = packet->dataSize;
+			std::memcpy(voice_packets[client_num][voice_packet_count[client_num]].data, packet->data, packet->dataSize);
 
-			voice_packets[client_num][packet_count].talker = static_cast<char>(talker);
+			voice_packets[client_num][voice_packet_count[client_num]].talker = static_cast<char>(talker);
 			++voice_packet_count[client_num];
 		}
 
@@ -117,6 +119,12 @@ namespace experimental
 			return (client && other_client && client->sessionState == other_client->sessionState);
 		}
 
+		inline bool g_dead_chat_enabled()
+		{
+			static const auto dead_chat = game::Dvar_FindVar("g_deadchat");
+			return (dead_chat && dead_chat->current.enabled);
+		}
+
 		void g_broadcast_voice(game::mp::gentity_s* talker, const game::VoicePacket_t* packet)
 		{
 #ifdef DEBUG
@@ -133,13 +141,14 @@ namespace experimental
 
 				auto* talker_client = talker->client;
 
-				// TODO: add dead chat support
+				// TODO: check for non-bots
 				if (target_client && talker != target_ent && !sv_server_has_client_muted(talker->s.number)
 					&& (is_session_state(target_client, game::mp::SESS_STATE_INTERMISSION)
 						|| on_same_team(talker, target_ent) 
 						|| talker_client->team == game::mp::TEAM_FREE) 
 					&& (is_session_state_same(target_client, talker_client) ||
-						(is_session_state(target_client, game::mp::SESS_STATE_DEAD) || is_session_state(talker_client, game::mp::SESS_STATE_DEAD))))
+						(is_session_state(target_client, game::mp::SESS_STATE_DEAD) || 
+							(g_dead_chat_enabled() && is_session_state(talker_client, game::mp::SESS_STATE_DEAD)))))
 				{
 #ifdef DEBUG
 					if (voice_debug->current.enabled)
@@ -275,6 +284,7 @@ namespace experimental
 			else
 			{
 				game::NET_OutOfBandVoiceData(game::NS_SERVER, const_cast<game::netadr_s*>(&client->header.remoteAddress), msg.data, msg.cursize);
+				voice_packet_count[client_num] = 0;
 			}
 		}
 
@@ -289,6 +299,12 @@ namespace experimental
 		/*
 			client voice chat code
 		*/
+		inline bool cl_voice_enabled()
+		{
+			static const auto cl_voice = game::Dvar_FindVar("cl_voice");
+			return (cl_voice && cl_voice->current.enabled);
+		}
+
 		inline void cl_clear_muted_list()
 		{
 			std::memset(mute_list, 0, sizeof(mute_list));
@@ -297,7 +313,7 @@ namespace experimental
 		utils::hook::detour cl_write_voice_packet_hook;
 		void cl_write_voice_packet_stub(const int local_client_num)
 		{
-			if (game::VirtualLobby_Loaded())
+			if (!game::CL_IsCgameInitialized() || game::VirtualLobby_Loaded() || !cl_voice_enabled())
 			{
 				return;
 			}
@@ -334,12 +350,20 @@ namespace experimental
 #endif
 		}
 
-		bool cl_is_player_talking_stub([[maybe_unused]] void* session, int talking_client_index)
+		/*
+		bool voice_is_xuid_talking_stub([[maybe_unused]] void* session, __int64 xuid)
 		{
-			// Voice_IsClientTalking (on H1, it's Voice_IsXuidTalking?)
-			auto trol = *game::mp::qword_C9DD1B0[talking_client_index];
-			return game::Sys_Milliseconds() - trol < 300;
+			auto current_time = game::Sys_Milliseconds();
+			auto client_talk_time = s_clientTalkTime[saved_talking_client];
+			if (!client_talk_time)
+			{
+				return true;
+			}
+
+			auto res = (current_time - client_talk_time) < 300;
+			return res;
 		}
+		*/
 
 		bool cl_is_player_muted_stub([[maybe_unused]] void* session, int mute_client_index)
 		{
@@ -382,7 +406,7 @@ namespace experimental
 
 		void cl_voice_packet(game::netadr_s* address, game::msg_t* msg)
 		{
-			if (!game::CL_IsCgameInitialized() || game::VirtualLobby_Loaded())
+			if (!game::CL_IsCgameInitialized() || game::VirtualLobby_Loaded() || !cl_voice_enabled())
 			{
 				return;
 			}
@@ -394,8 +418,11 @@ namespace experimental
 			}
 
 			const auto num_packets = game::MSG_ReadByte(msg);
-			if (num_packets < 0)// || num_packets > MAX_SERVER_QUEUED_VOICE_PACKETS)
+			if (num_packets < 0 || num_packets > MAX_SERVER_QUEUED_VOICE_PACKETS)
 			{
+#ifdef DEBUG
+				console::error("num_packets was less than 0 or greater than MAX_SERVER_QUEUED_VOICE_PACKETS (%d/%d)\n", num_packets, MAX_SERVER_QUEUED_VOICE_PACKETS);
+#endif
 				return;
 			}
 
@@ -418,16 +445,17 @@ namespace experimental
 
 				if (!cl_is_player_muted_stub(nullptr, packet.talker))
 				{
-					// TODO: cl_voice dvar check
 #ifdef DEBUG
 					if (voice_debug->current.enabled)
 					{
-						console::debug("calling Voice_IncomingVoiceData\n");
+						console::debug("calling Voice_IncomingVoiceData with talker %d's data\n", packet.talker);
 					}
 #endif
 
 					// Voice_IncomingVoiceData
 					utils::hook::invoke<void>(0x5BF370_b, nullptr, packet.talker, reinterpret_cast<unsigned char*>(packet.data), packet.dataSize);
+				
+					s_clientTalkTime[packet.talker] = game::Sys_Milliseconds();
 				}
 			}
 		}
@@ -483,7 +511,8 @@ namespace experimental
 			utils::hook::set<std::uint8_t>(0x12F2AD_b, 0xEB);
 			network::on_raw("v", cl_voice_packet);
 
-			utils::hook::jump(0x135950_b, cl_is_player_talking_stub, true);
+			// TODO: add support for UI_IsTalking and other things idek
+			//utils::hook::jump(0x5BF7F0_b, voice_is_xuid_talking_stub, true);
 			utils::hook::jump(0x1358B0_b, cl_is_player_muted_stub, true);
 
 			utils::hook::call(0x5624F3_b, sv_send_client_messages_stub);
