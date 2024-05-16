@@ -77,9 +77,9 @@ namespace experimental
 		void parse_asslist_asset()
 		{
 			std::string data_;
-			if (!utils::io::read_file("h2m-mod/test.asslist", &data_))
+			if (!utils::io::read_file("h2m-mod/_transient/patch_common_mp.asslist", &data_))
 			{
-				console::error("failed to find test.asslist file\n");
+				console::error("failed to find patch_common_mp.asslist file\n");
 			}
 
 			printf("[parse_asslist_asset] parsing...\n");
@@ -89,8 +89,6 @@ namespace experimental
 
 			auto data_ptr = data.data();
 			unsigned char* current_char_in_buffer = data.data() + 5;
-
-			// 0x0 is always 0xFE
 
 			// 0x1 is the amount of transient pools to iterate over (5 from example)
 			auto pool_count = data_ptr[1] | (data_ptr[2] << 8) | (data_ptr[3] << 16) | (data_ptr[4] << 24);
@@ -109,69 +107,40 @@ namespace experimental
 						++string_length;
 					} while (current_char_in_buffer[string_length]);
 
-					std::uint8_t* bytes_after_name = &current_char_in_buffer[string_length + 1]; // 00 00 C0 71 (this var + 1 = C0 [...] [...])
+					auto bytes_after_name = &current_char_in_buffer[string_length + 1];
+					std::uint64_t tr_zone_count_array = (bytes_after_name[2] << 16) | *(unsigned __int16*)bytes_after_name | (bytes_after_name[3] << 24);
 					
-					// idb version (it... works?)
-					std::uint64_t tr_zone_count_array = *bytes_after_name | (((unsigned __int8)bytes_after_name[1] | ((unsigned __int64)*((unsigned __int16*)bytes_after_name + 1) << 8)) << 8);
+					auto zone_count = bytes_after_name[4];
+					auto tr_zone_count = (*(current_char_in_buffer - 1) << 24) | (*(current_char_in_buffer - 2) << 16) | (bytes_after_name[5] << 8) | zone_count;
 
-					// name + 0x6 is number of tr zones in the specific pool
-					auto unknown_var_v18 = ((unsigned __int8)bytes_after_name[6] << 16) | *((unsigned __int16*)bytes_after_name + 2);
-					auto unknown_var_v19 = (unsigned __int8)bytes_after_name[7] << 24;
-					auto tr_zone_count = unknown_var_v19 | unknown_var_v18; // TODO: label names
 					printf("[parse_asslist_asset] pool \"%s\" has %d zones to register\n", current_tr_pool, tr_zone_count); // this prints readable values
-
-					// elf version
-					/*
-					auto hardcoded_count_lol_idk = 0;
-					std::uint64_t tr_zone_count_array[36]{};
-					for (auto idk_iterator = bytes_after_name; ; idk_iterator += 4)
-					{
-						auto tr_zone_count = *(unsigned __int16*)idk_iterator | (*((unsigned __int8*)idk_iterator + 2) << 16) | (*((unsigned __int8*)idk_iterator + 3) << 24);
-						if (hardcoded_count_lol_idk > 2) break;
-						auto index = hardcoded_count_lol_idk++;
-						tr_zone_count_array[index] = tr_zone_count;
-					}
-					*/
 
 					//std::uint8_t out_pool_index;
 					//int left_slots;
-					auto registered_pool = 0;//CL_TransientMem_RegisterPool(current_tr_pool, tr_zone_count, &tr_zone_count_array, 1, (unsigned __int8*)&out_pool_index, &left_slots) | 0;
+					auto registered_pool = 0;//CL_TransientMem_RegisterPool(current_tr_pool, &tr_zone_count_array, 1, (unsigned __int8*)&out_pool_index, &left_slots);
 
 					auto sync_type = Com_StreamSync_CategoryNameToSyncType(reinterpret_cast<char*>(current_tr_pool));
 					auto count_max = Com_StreamSync_GetCountMax(sync_type);
 
+					// doesnt even matter
+					/*
 					// prepare to parse data that occurs every 4 bytes until the transient zones for pool array
-					current_char_in_buffer = bytes_after_name + 8; // goes past the "50 20 00 3B 00 00 00 00" and now we're handling data for the tr zones
-
-					/*
-						this code is literally wrong but its important for identifying information about each transient zone
-
-						idk when but 
-					*/
-					/*
-					auto v8 = 0;
-					auto v41 = 0;
+					int v8_count_unk = 0;
+					int index_ = 0;
 					if (tr_zone_count)
 					{
-						auto index_ = 0;
-						do
+						while (index_ < tr_zone_count)
 						{
-							// every 4 bytes
-							auto idk_one	= *current_char_in_buffer;			// 0x0 = 00
-							auto idk_two	= current_char_in_buffer[1];		// 0x1 = 50
-							auto idk_three	= current_char_in_buffer[2];		// 0x2 = 20
-							auto idk_four	= current_char_in_buffer[3];		// 0x3 = 00
+							auto v24 = *current_char_in_buffer;
+							auto v25 = current_char_in_buffer[1];
+							auto v26 = current_char_in_buffer[2];
+							auto v27 = current_char_in_buffer[3];
 							current_char_in_buffer += 4;
-
-							// wtf is v8 used for????
 							if (index_ < count_max)
-							{
-								v8 += v24 | ((v25 | ((count | ((unsigned __int64)v27 << 8)) << 8)) << 8);
-								printf("[parse_asslist_asset] adding %d to v8\n", v8);
-							}
-
+								v8_count_unk += v24 | ((v25 | ((v26 | (v27 << 8)) << 8)) << 8);
 							++index_;
-						} while (index_ < tr_zone_count);
+						}
+						auto v43_count_unk = v8_count_unk;
 					}
 					*/
 
@@ -221,7 +190,7 @@ namespace experimental
 
 		unsigned int hash_xmodel_name(const char* xmodel_name)
 		{
-			auto name_and_type_hash = 7u;
+			int name_and_type_hash = 7;
 			for (auto i = *xmodel_name; *xmodel_name; i = *xmodel_name)
 			{
 				++xmodel_name;
@@ -266,7 +235,7 @@ namespace experimental
 				data.push_back(static_cast<std::uint8_t>(string[i]));\
 			} \
 
-#define PUSH_BACK_STRING_(string) \
+#define PUSH_BACK_STRING_NULL_T(string) \
 			for (auto i = 0; i < string.size(); ++i) \
 			{ \
 				data.push_back(static_cast<std::uint8_t>(string[i]));\
@@ -279,8 +248,7 @@ namespace experimental
 			// iterate through every pool we need to parse
 			for (auto pool_count = 0; pool_count < pools.size(); ++pool_count)
 			{
-				PUSH_BACK_STRING_(pools[pool_count]); // pool name
-				//data.push_back(0x00); // ... don't ask me
+				PUSH_BACK_STRING_NULL_T(pools[pool_count]); // pool name
 
 				/*
 						00 50 20 00 3B 00 00 00 (mp_char_head)
@@ -294,22 +262,20 @@ namespace experimental
 						2 = count?		(0x24, idk what for)
 						3 = idk			(0x00, maybe always 0)
 						4 = zone count	(0x34)
+						5-8 is just 0x0
 				*/
 
-				data.push_back(0x00);	// 0x0
-				data.push_back(transient_pool_type::MP_VIEWWEAP_POOL); // 
-				data.push_back(0x71);	// 113
+				data.push_back(0x0);	// 0x0
+				data.push_back(0x0);	// 0x80
+				data.push_back(0x0);	// 0x9A
 				data.push_back(0x0);	// 0
 				data.push_back(0x1);	// 0x52
-				for (auto zero_spam = 0; zero_spam < 4; ++zero_spam)
+				for (auto zero_spam = 0; zero_spam < 3; ++zero_spam)
 				{
 					data.push_back(0x00); // bunch of 0s idek
 				}
 
-				// reiterate through all assets in pool (TODO: needed?)
-				for (auto tr_zone_count = 0; tr_zone_count < tr_zones.size(); ++tr_zone_count)
-				{
-					/*
+				/*
 						00 C0 71 00 // mp_vm_ak47_base_tr
 						00 20 4D 00 // mp_vm_ak47_btw_tr
 
@@ -322,20 +288,23 @@ namespace experimental
 						00 A0 42 00 // mp_vm_colt45_base_tr
 
 						mp_vm_m4_base_tr
-					*/
-					// similar patterns here and there, but im not sure.
-
+				*/
+				/*
+				// reiterate through all assets in pool (TODO: is this needed?)
+				for (auto tr_zone_count = 0; tr_zone_count < tr_zones.size(); ++tr_zone_count)
+				{
 					// this data occurs every 4 bytes
 					data.push_back(0x00);
 					data.push_back(0xC0);
 					data.push_back(0x71);
 					data.push_back(0x00);
 				}
+				*/
 
 				// reiterate through all assets in pool again
 				for (auto tr_zone_count = 0; tr_zone_count < tr_zones.size(); ++tr_zone_count)
 				{
-					PUSH_BACK_STRING_(tr_zones[tr_zone_count]); // tr zone name
+					PUSH_BACK_STRING_NULL_T(tr_zones[tr_zone_count]); // tr zone name
 
 					auto xmodel_count = 1; // make this not hardcoded lol
 					data.push_back(xmodel_count);
@@ -343,7 +312,7 @@ namespace experimental
 					for (auto i = 0; i < xmodel_count; ++i)
 					{
 						// contains a "name and type" hash for each xmodel in file
-						const auto name_and_type_hash = hash_xmodel_name(tr_zones[tr_zone_count].data());
+						const auto name_and_type_hash = hash_xmodel_name("wpn_h2_m4a1_vm");
 						data.push_back( static_cast<std::uint8_t>( (name_and_type_hash >> 24) & 0xFF) );
 						data.push_back( static_cast<std::uint8_t>( (name_and_type_hash >> 16) & 0xFF) );
 						data.push_back( static_cast<std::uint8_t>( (name_and_type_hash >> 8) & 0xFF) );
