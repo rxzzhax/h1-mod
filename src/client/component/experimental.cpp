@@ -380,6 +380,77 @@ namespace experimental
 
 			return game::DB_FindXAssetHeader(type, name, allow_create_default).rawfile;
 		}
+
+		std::unordered_map<unsigned int, __int16> hash_map;
+		int custom_tr_zone_start = 7000;
+
+		void load_transient_map()
+		{
+			hash_map = {};
+			auto result = hash_xmodel_name("wpn_h2_m4a1_vm");
+			hash_map[result] = custom_tr_zone_start;
+			++custom_tr_zone_start;
+		}
+
+		utils::hook::detour register_tr_asset_hook;
+		void register_tr_asset_stub(unsigned int name_and_type_hash, __int16 file_index, int dlc_or_patch)
+		{
+			hash_map[name_and_type_hash] = file_index;
+			//console::debug("registering %u for index %hd\n", name_and_type_hash, file_index);
+			register_tr_asset_hook.invoke<void>(name_and_type_hash, file_index, dlc_or_patch);
+		}
+
+		utils::hook::detour can_use_tr_asset_hook;
+		int can_use_tr_asset_stub(const char* xmodel_name, const char type)
+		{
+			auto hash = hash_xmodel_name(xmodel_name);
+			if (hash_map.contains(hash))
+			{
+				printf("can use tr asset for \"%s\" (%u)\n", xmodel_name, hash);
+				return 1;
+			}
+
+			const auto res = can_use_tr_asset_hook.invoke<int>(xmodel_name, type);
+			if (res)
+			{
+				console::debug("can use tr asset for \"%s\" (%u)\n", xmodel_name, hash);
+			}
+
+			return res;
+		}
+
+		utils::hook::detour find_tr_asset_index_hook;
+		__int64 find_tr_asset_index_stub(const unsigned int name_and_type_hash)
+		{
+			if (hash_map.contains(name_and_type_hash))
+			{
+				auto index = hash_map[name_and_type_hash];
+				printf("returning %hi\n", index);
+				return hash_map[name_and_type_hash];
+			}
+
+			const auto res = find_tr_asset_index_hook.invoke<__int64>(name_and_type_hash);
+			if (res != 0xFFFF)
+			{
+				//console::debug("find_tr_asset_index_stub isn't 0xFFFF (%u)\n", name_and_type_hash);
+			}
+
+			return res;
+		}
+
+		utils::hook::detour is_tr_asset_hook;
+		int is_tr_asset_stub(const char* name, const char type)
+		{
+			auto hash = hash_xmodel_name(name);
+			if (hash_map.contains(hash))
+			{
+				printf("is tr asset for \"%s\" (%u)\n", name, hash);
+				return 1;
+			}
+
+			auto res = is_tr_asset_hook.invoke<int>(name, type);
+			return res;
+		}
 	}
 
 	class component final : public component_interface
@@ -387,6 +458,8 @@ namespace experimental
 	public:
 		void post_unpack() override
 		{
+			load_transient_map();
+
 			command::add("parseasslist", []()
 			{
 				parse_asslist_asset();
@@ -420,6 +493,12 @@ namespace experimental
 
 			// change minimum cap to -2000 instead of -1000 (culling issue)
 			dvars::override::register_float("r_lodBiasRigid", 0, -2000, 0, game::DVAR_FLAG_SAVED);
+
+			// debug registering
+			register_tr_asset_hook.create(0x75820_b, register_tr_asset_stub);
+			can_use_tr_asset_hook.create(0x75000_b, can_use_tr_asset_stub);
+			find_tr_asset_index_hook.create(0x751A0_b, find_tr_asset_index_stub);
+			is_tr_asset_hook.create(0x753A0_b, is_tr_asset_stub);
 		}
 	};
 }
